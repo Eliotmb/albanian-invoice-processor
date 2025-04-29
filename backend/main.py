@@ -6,6 +6,7 @@ import cv2
 import numpy as np
 import io
 from typing import List, Dict
+import preprocess
 import json
 import sys
 import os
@@ -45,17 +46,12 @@ def preprocess_image(image_bytes):
         # Convert to OpenCV format
         cv_image = cv2.cvtColor(np.array(image), cv2.COLOR_RGB2BGR)
         logger.debug("Converted to OpenCV format")
-        
-        # Convert to grayscale
-        gray = cv2.cvtColor(cv_image, cv2.COLOR_BGR2GRAY)
-        logger.debug("Converted to grayscale")
-        
-        # Apply thresholding
-        thresh = cv2.threshold(gray, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)[1]
-        logger.debug("Applied thresholding")
-        
+
+        preprocessed_image = preprocess.preprocess(cv_image)
+        logger.debug("Preprocessed image")
+
         # Convert back to PIL Image
-        return Image.fromarray(cv2.cvtColor(thresh, cv2.COLOR_BGR2RGB))
+        return Image.fromarray(cv2.cvtColor(preprocessed_image, cv2.COLOR_BGR2RGB))
     except Exception as e:
         logger.error(f"Error in preprocess_image: {str(e)}", exc_info=True)
         raise
