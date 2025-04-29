@@ -1,15 +1,19 @@
 import React, { useState } from 'react';
-import { Button, Box, CircularProgress, Alert } from '@mui/material';
+import { Upload, Spin, Alert, Typography, Card, message } from 'antd';
+import { InboxOutlined } from '@ant-design/icons';
 import axios from 'axios';
+import { useNavigate } from 'react-router-dom';
+import './UploadForm.css';
+
+const { Dragger } = Upload;
 
 const UploadForm = ({ onUploadSuccess }) => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
+  const [result, setResult] = useState('');
+  const navigate = useNavigate();
 
-  const handleFileUpload = async (event) => {
-    const file = event.target.files[0];
-    if (!file) return;
-
+  const handleFileUpload = async (file) => {
     const formData = new FormData();
     formData.append('file', file);
 
@@ -22,59 +26,86 @@ const UploadForm = ({ onUploadSuccess }) => {
         headers: {
           'Content-Type': 'multipart/form-data',
         },
-        timeout: 30000, // 30 second timeout
+        timeout: 30000,
       });
 
       console.log('Server response:', response.data);
+      setResult(response.data.text);
       onUploadSuccess(response.data);
+
+      navigate('/invoice');
     } catch (err) {
       console.error('Upload error:', err);
       let errorMessage;
-      
+
       if (err.code === 'ECONNABORTED') {
         errorMessage = 'Request timed out. Please try again.';
       } else if (err.code === 'ERR_NETWORK') {
         errorMessage = 'Network error. Please check if the server is running and try again.';
       } else {
-        errorMessage = err.response?.data?.detail || 
-                      err.response?.data?.error || 
-                      err.message || 
-                      'Error processing invoice';
+        errorMessage = err.response?.data?.detail ||
+                       err.response?.data?.error ||
+                       err.message ||
+                       'Error processing invoice';
       }
-      
+
       setError(`Error: ${errorMessage}`);
+      message.error(errorMessage);
     } finally {
       setLoading(false);
     }
   };
 
+  const uploadProps = {
+    name: 'file',
+    accept: 'image/*',
+    multiple: false,
+    customRequest: ({ file, onSuccess }) => {
+      handleFileUpload(file);
+      setTimeout(() => {
+        onSuccess('ok');
+      }, 0);
+    },
+    showUploadList: false,
+  };
+
   return (
-    <Box sx={{ my: 4, textAlign: 'center' }}>
-      <input
-        accept="image/*"
-        style={{ display: 'none' }}
-        id="raised-button-file"
-        type="file"
-        onChange={handleFileUpload}
-      />
-      <label htmlFor="raised-button-file">
-        <Button variant="contained" component="span" disabled={loading}>
-          Upload Invoice
-        </Button>
-      </label>
+    <div className="upload-container">
+      <Typography.Title level={2} className="upload-heading">
+        Albanian Invoice Processor
+      </Typography.Title>
+
+      <Dragger {...uploadProps} className="upload-dropzone">
+        <InboxOutlined style={{ fontSize: '40px', color: '#1890ff' }} />
+        <p className="upload-instruction">Drag and drop an invoice here, or click to upload</p>
+      </Dragger>
+
 
       {loading && (
-        <Box sx={{ mt: 2 }}>
-          <CircularProgress />
-        </Box>
+        <div style={{ marginTop: '20px' }}>
+          <Spin size="large" />
+        </div>
       )}
 
       {error && (
-        <Box sx={{ mt: 2 }}>
-          <Alert severity="error">{error}</Alert>
-        </Box>
+        <div style={{ marginTop: '20px' }}>
+          <Alert message={error} type="error" showIcon />
+        </div>
       )}
-    </Box>
+
+      {result && !loading && !error && (
+        <div style={{ marginTop: '30px' }}>
+          <Card className="upload-result">
+            <Typography.Title level={4} className="upload-result-title">
+              Extracted Text:
+            </Typography.Title>
+            <Typography.Paragraph className="upload-result-text">
+              {result}
+            </Typography.Paragraph>
+          </Card>
+        </div>
+      )}
+    </div>
   );
 };
 

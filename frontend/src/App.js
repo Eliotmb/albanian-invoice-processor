@@ -1,25 +1,36 @@
 import React, { useState } from 'react';
-import { Container, Typography, CssBaseline, Box } from '@mui/material';
+import { Container, Box, Button } from '@mui/material';
 import UploadForm from './components/UploadForm';
 import InvoiceDisplay from './components/InvoiceDisplay';
+import './App.css';
 
 function App() {
   const [invoiceData, setInvoiceData] = useState(null);
 
+  const handleBackClick = () => {
+    setInvoiceData(null);
+  };
+
   return (
-    <>
-      <CssBaseline />
-      <Container maxWidth="lg">
-        <Box sx={{ my: 4 }}>
-          <Typography variant="h4" component="h1" gutterBottom align="center">
-            Albanian Invoice Processor
-          </Typography>
-          
+    <Box className={`main-box ${invoiceData ? 'with-data' : ''}`}>
+      <Container maxWidth="md">
+        {!invoiceData ? (
           <UploadForm onUploadSuccess={setInvoiceData} />
-          <InvoiceDisplay data={invoiceData} />
-        </Box>
+        ) : (
+          <>
+            <Box className="back-button-box">
+              <Button className="back-button" variant="outlined" onClick={handleBackClick}>
+                Back to Upload
+              </Button>
+            </Box>
+
+            <Box className="invoice-display-box">
+              <InvoiceDisplay data={invoiceData} />
+            </Box>
+          </>
+        )}
       </Container>
-    </>
+    </Box>
   );
 }
 

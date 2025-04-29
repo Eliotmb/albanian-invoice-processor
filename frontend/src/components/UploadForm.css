@@ -1,0 +1,66 @@
+/* UploadForm.css */
+
+.upload-container {
+    text-align: center;
+  }
+  
+  .upload-heading {
+    font-weight: bold;
+    color: #005AA7;
+    margin-bottom: 20px;
+  }
+  
+  .upload-dropzone {
+    border: 2px dashed #a7a7a7; /* Only one border */
+    border-radius: 16px;
+    padding: 48px; /* equivalent to 6 spacing in MUI */
+    margin-bottom: 16px;
+    cursor: pointer;
+    background-color: #ffffff; /* White background */
+    transition: background-color 0.3s ease;
+    display: flex; /* Center content */
+    justify-content: center; /* Center horizontally */
+    align-items: center; /* Center vertically */
+    min-height: 200px; /* Minimum height */
+    box-shadow: 0 4px 14px rgba(79, 70, 229, 0.1); /* Subtle shadow */
+  }
+  
+  .upload-dropzone:hover {
+    background-color: #f7f7f7; /* Slightly grey background on hover */
+  }
+  
+  .upload-instruction {
+    color: #707070;
+    margin-bottom: 16px;
+  }
+  
+  .upload-button {
+    background-color: #005AA7;
+    border-radius: 12px;
+    text-transform: none;
+    padding: 12px 32px;
+    font-weight: bold;
+    font-size: 1rem;
+    box-shadow: 0 4px 14px rgba(79, 70, 229, 0.25);
+  }
+  
+  .upload-button:hover {
+    background-color: #4338ca;
+  }
+  
+  .upload-result {
+    padding: 24px;
+    border-radius: 12px;
+    background-color: #e9f7ff;
+  }
+  
+  .upload-result-title {
+    margin-bottom: 16px;
+    color: #005AA7;
+  }
+  
+  .upload-result-text {
+    color: #333;
+    white-space: pre-line;
+  }
+  

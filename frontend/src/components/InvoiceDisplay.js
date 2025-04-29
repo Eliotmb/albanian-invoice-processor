@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { 
   Paper, 
   Table, 
@@ -12,14 +12,45 @@ import {
 } from '@mui/material';
 
 const InvoiceDisplay = ({ data }) => {
-  if (!data || !data.items) return null;
+  const [items, setItems] = useState([]);
+
+  useEffect(() => {
+    // When backend is not ready, mocking only the items
+    if (data && data.raw_text) {
+      const mockItems = [
+        {
+          nr_kartele: '12345',
+          pershkrimi: 'Shërbim X',
+          njesia: 'copë',
+          sasia: 5,
+          cmimi: 100.00,
+          vlera_pa_tvsh: 500.00,
+          tvsh: '18%',
+          vlera_me_tvsh: 590.00
+        },
+        {
+          nr_kartele: '12346',
+          pershkrimi: 'Shërbim Y',
+          njesia: 'copë',
+          sasia: 3,
+          cmimi: 150.00,
+          vlera_pa_tvsh: 450.00,
+          tvsh: '18%',
+          vlera_me_tvsh: 531.00
+        }
+      ];
+      setItems(mockItems);
+    }
+  }, [data]);
+
+  if (!data || !data.raw_text) return <Typography>Loading...</Typography>;
 
   return (
     <Box sx={{ mt: 4 }}>
       <Typography variant="h6" gutterBottom>
         Invoice Details
       </Typography>
-      
+
       <TableContainer component={Paper}>
         <Table>
           <TableHead>
@@ -35,7 +66,7 @@ const InvoiceDisplay = ({ data }) => {
             </TableRow>
           </TableHead>
           <TableBody>
-            {data.items.map((item, index) => (
+            {items.map((item, index) => (
               <TableRow key={index}>
                 <TableCell>{item.nr_kartele}</TableCell>
                 <TableCell>{item.pershkrimi}</TableCell>
