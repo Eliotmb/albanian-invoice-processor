@@ -1,183 +1,128 @@
 from fastapi import FastAPI, UploadFile, File, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 from PIL import Image
-import pytesseract
-import cv2
 import numpy as np
 import io
-from typing import List, Dict
-import preprocess
+import easyocr
+import re
+
 import json
 import sys
 import os
 import logging
+import time
 
 # Configure logging
-logging.basicConfig(level=logging.DEBUG)
+logging.basicConfig(
+    level=logging.DEBUG,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+)
 logger = logging.getLogger(__name__)
 
-# Configure Tesseract
-pytesseract.pytesseract.tesseract_cmd = r'C:\Program Files\Tesseract-OCR\tesseract.exe'
-TESSDATA_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'tessdata')
-os.environ['TESSDATA_PREFIX'] = TESSDATA_DIR
+app = FastAPI(
+    title="Albanian Invoice OCR API",
+    description="API for processing Albanian invoices using EasyOCR",
+    version="1.0.0"
+)
 
-app = FastAPI()
+# Initialize EasyOCR with Albanian and English
+reader = easyocr.Reader(['sq', 'en'])
 
-# Configure CORS
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # More permissive during development
+    allow_origins=["*"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-def preprocess_image(image_bytes):
-    try:
-        # Convert bytes to PIL Image
-        image = Image.open(io.BytesIO(image_bytes))
-        logger.debug(f"Image opened successfully. Size: {image.size}, Mode: {image.mode}")
-        
-        # Convert to RGB if needed
-        if image.mode != 'RGB':
-            image = image.convert('RGB')
-            logger.debug("Converted image to RGB mode")
-        
-        # Convert to OpenCV format
-        cv_image = cv2.cvtColor(np.array(image), cv2.COLOR_RGB2BGR)
-        logger.debug("Converted to OpenCV format")
+# Add root endpoint
+@app.get("/")
+async def root():
+    return {"message": "Albanian Invoice OCR API is running (EasyOCR)"}
 
-        preprocessed_image = preprocess.preprocess(cv_image)
-        logger.debug("Preprocessed image")
+# Add health check endpoint
+@app.get("/health")
+async def health_check():
+    return {"status": "healthy"}
 
-        # Convert back to PIL Image
-        return Image.fromarray(cv2.cvtColor(preprocessed_image, cv2.COLOR_BGR2RGB))
-    except Exception as e:
-        logger.error(f"Error in preprocess_image: {str(e)}", exc_info=True)
-        raise
+@app.exception_handler(Exception)
+async def global_exception_handler(request, exc):
+    logger.error(f"Global error handler caught: {str(exc)}", exc_info=True)
+    return JSONResponse(
+        status_code=500,
+        content={"detail": str(exc)}
+    )
 
-def extract_table_data(text: str) -> List[Dict]:
-    """Extract structured data from the invoice text"""
-    try:
-        lines = text.split('\n')
-        items = []
-        current_item = {}
-        header_found = False
-        
-        # Define header keywords
-        headers = {
-            'nr_kartele': ['nr kartele', 'nrkartele', 'nr.kartele'],
-            'pershkrimi': ['pershkrimi', 'pershkrim', 'përshkrimi'],
-            'njesia': ['njesia', 'njësia', 'nj'],
-            'sasia': ['sasia', 'sasi'],
-            'cmimi': ['cmimi', 'çmimi'],
-            'vlera_pa_tvsh': ['vlera pa tvsh', 'pa tvsh'],
-            'tvsh': ['tvsh', 't.v.sh'],
-            'vlera_me_tvsh': ['vlera me tvsh', 'me tvsh']
-        }
-        
-        logger.debug("\nProcessing lines:")
-        for line in lines:
-            line = line.strip().lower()
-            if not line:
-                continue
-                
-            logger.debug(f"Processing line: {line}")
-            
-            # Check if this is a header line
-            header_matches = 0
-            for header_key, header_variants in headers.items():
-                if any(variant in line for variant in header_variants):
-                    header_matches += 1
-                    logger.debug(f"Found header match: {header_key}")
-            
-            if header_matches >= 3:  # If we find at least 3 headers
-                logger.debug("Header line found!")
-                header_found = True
-                if current_item:
-                    items.append(current_item)
-                    current_item = {}
-                continue
-            
-            if header_found:
-                # Split line into words
-                words = line.split()
-                if len(words) >= 4:  # Assume we need at least 4 words for a valid item line
-                    try:
-                        # Try to extract numeric values
-                        numbers = [float(word.replace(',', '.')) for word in words if word.replace(',', '.').replace('.', '').isdigit()]
-                        if len(numbers) >= 3:  # If we found at least 3 numbers
-                            logger.debug(f"Found item line with numbers: {numbers}")
-                            current_item = {
-                                'nr_kartele': words[0] if len(words) > 0 else '',
-                                'pershkrimi': ' '.join(words[1:-6]) if len(words) > 6 else '',
-                                'njesia': words[-6] if len(words) > 6 else '',
-                                'sasia': numbers[0] if len(numbers) > 0 else None,
-                                'cmimi': numbers[1] if len(numbers) > 1 else None,
-                                'vlera_pa_tvsh': numbers[2] if len(numbers) > 2 else None,
-                                'tvsh': numbers[3] if len(numbers) > 3 else None,
-                                'vlera_me_tvsh': numbers[4] if len(numbers) > 4 else None
-                            }
-                            items.append(current_item)
-                            current_item = {}
-                            logger.debug(f"Added item: {current_item}")
-                    except (ValueError, IndexError) as e:
-                        logger.error(f"Error processing line: {e}")
-                        continue
-        
-        # Add the last item if exists
-        if current_item:
-            items.append(current_item)
-        
-        logger.debug(f"\nExtracted {len(items)} items")
-        return items
-    except Exception as e:
-        logger.error(f"Error in extract_table_data: {str(e)}", exc_info=True)
-        raise
+def extract_description_price_pairs(ocr_text):
+    pairs = []
+    for line in ocr_text.splitlines():
+        # Regex: price at end of line (e.g. 123.45 or 1,234.56 or 123)
+        match = re.search(r'([0-9]+(?:[.,][0-9]{2})?)\s*$', line)
+        if match:
+            price = match.group(1)
+            description = line[:match.start()].strip(" .:-\t")
+            if description and price:
+                pairs.append({"description": description, "price": price})
+    return pairs
+
+def extract_invoice_totals(ocr_text):
+    totals = {}
+    # Patterns to match (add more variants if needed)
+    patterns = [
+        (r"totali[\s\-]*i[\s\-]*fatur[ëeës]+", "Totali i faturës"),
+        (r"totali[\s\-]*n[ëe][\s\-]*euro", "Totali në euro"),
+        (r"total", "Total"),  # Add English 'total' as a catch-all
+    ]
+    for line in ocr_text.lower().splitlines():
+        for pattern, label in patterns:
+            if re.search(pattern, line):
+                # Find the last number in the line (price)
+                match = re.search(r"([0-9]+(?:[.,][0-9]{2,})?)\s*$", line)
+                if match:
+                    totals[label] = match.group(1)
+    return totals
 
 @app.post("/api/process-invoice/")
 async def process_invoice(file: UploadFile = File(...)):
-    logger.info("\n=== Starting Invoice Processing ===")
     try:
-        if not file.filename:
-            raise HTTPException(status_code=400, detail="No file provided")
-        
-        logger.info(f"Received file: {file.filename}")
+        logger.info("Starting to process invoice...")
         contents = await file.read()
-        logger.info(f"File size: {len(contents)} bytes")
+        logger.info("File read complete, size: %d bytes", len(contents))
         
-        # Preprocess the image
-        logger.info("Preprocessing image...")
-        processed_image = preprocess_image(contents)
-        logger.info("Image preprocessing complete")
+        image = Image.open(io.BytesIO(contents)).convert("RGB")
+        logger.info("Image loaded and converted to RGB")
         
-        # Extract text using Tesseract
-        logger.info("Extracting text with Tesseract...")
-        text = pytesseract.image_to_string(processed_image, lang='sqi+eng')
-        logger.info("\nExtracted text:")
-        logger.info(text)
+        np_image = np.array(image)
+        logger.info("Image converted to numpy array, shape: %s", np_image.shape)
         
-        # Extract structured data
-        logger.info("\nExtracting structured data...")
-        items = extract_table_data(text)
+        logger.info("Starting OCR processing...")
+        result = reader.readtext(np_image)
+        logger.info("OCR processing complete, found %d text regions", len(result))
         
-        # Prepare response
-        response_data = {
-            "items": items,
-            "raw_text": text
-        }
+        ocr_text = '\n'.join([line[1] for line in result])
+        logger.info("Text extraction complete")
         
-        logger.info("\n=== Processing Complete ===")
-        return response_data
+        pairs = extract_description_price_pairs(ocr_text)
+        logger.info("Extracted %d description-price pairs", len(pairs))
         
+        totals = extract_invoice_totals(ocr_text)
+        logger.info("Extracted totals: %s", totals)
+        
+        return {"text": ocr_text, "extracted_data": {"pairs": pairs, "totals": totals}}
     except Exception as e:
-        logger.error(f"\nError: {str(e)}", exc_info=True)
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.error("OCR processing failed: %s", str(e), exc_info=True)
+        raise HTTPException(status_code=500, detail=f"OCR processing failed: {str(e)}")
 
 if __name__ == "__main__":
     import uvicorn
     logger.info("Starting server...")
-    logger.info(f"Tesseract version: {pytesseract.get_tesseract_version()}")
-    logger.info(f"Available languages: {pytesseract.get_languages()}")
-    logger.info(f"Using tessdata directory: {TESSDATA_DIR}")
-    uvicorn.run(app, host="0.0.0.0", port=8080)
+    uvicorn.run(
+        app,
+        host="127.0.0.1",
+        port=3001,
+        reload=False,
+        log_level="debug",
+        lifespan="on"
+    )
